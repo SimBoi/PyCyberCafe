@@ -15,6 +15,8 @@ CLOCK_PORT = 22177
 
 # file containing the IPs of the cafe PCs
 ips_file_path = "ips.txt"
+# file containing the offline timers of the cafe PCs
+offline_timers_file_path = "offline_timers.txt"
 # json file to store the state of the cafe
 state_file_paths = "cafe_state_*.json"
 
@@ -25,29 +27,73 @@ update_ui_rate = 100 # in milliseconds
 
 # list of cafe PCs IPs
 ips = []
+try:
+    with open(ips_file_path, "r") as f:
+        # read the IPs from the file line by line
+        lines = f.read().splitlines()
+        # remove whitespaces
+        lines = [line.strip() for line in lines]
+        # remove empty lines
+        lines = [line for line in lines if line]
+        # remove comments
+        lines = [line for line in lines if not line.startswith("#")]
+        ips = lines
+except Exception as e:
+    print(f"Error reading IPs from file: {e}")
+    exit(1)
+
+# list of lists of cafe offline timers
+offline_timer_titles = []
+tab_names = []
+try:
+    with open(offline_timers_file_path, "r") as f:
+        # read the IPs from the file line by line
+        lines = f.read().splitlines()
+        # remove whitespaces
+        lines = [line.strip() for line in lines]
+        # remove empty lines
+        lines = [line for line in lines if line]
+        # remove comments
+        lines = [line for line in lines if not line.startswith("#")]
+        
+        # separate the offline timers by tabs
+        for line in lines:
+            if line.startswith("Tab:"):
+                tab_names.append(line[4:])
+                offline_timer_titles.append([])
+            else:
+                offline_timer_titles[-1].append(line)
+except Exception as e:
+    print(f"Error reading offline timers from file: {e}")
+    exit(1)
+
 # List to keep track of active sessions (index, time_left in minutes)
 active_sessions = []
+# List of lists to store the offline timers [(index, time_left in seconds)*, ...]
+active_offline_timers = [[] for _ in tab_names]
 # Dictionary to store current passwords for each café PC
-pc_passwords = []
+pc_passwords = [None for _ in ips]
 # List to store the "alive" status of each PC (True if alive, False if not)
-pc_statuses = []
+pc_statuses = [2 for _ in ips]
 
 # Lock to prevent race conditions between threads
 lock = threading.Lock()
 
-# Create the main UI window and widgets
+# Create the main UI window and widgets for the café PCs
 root = tk.Tk()
 labels = []
 buttons = []
 end_buttons = []
 duration_entry = None
 
-def start():
-    global ips, pc_passwords, pc_statuses
-    ips = fetch_ips()
-    pc_passwords = [None for _ in range(len(ips))]
-    pc_statuses = [2 for _ in range(len(ips))]
+# Create the main UI window and widgets for the offline timers
+roots_offline_timers = [tk.Tk() for _ in tab_names]
+labels_offline_timers = [[] for _ in tab_names]
+buttons_offline_timers = [[] for _ in tab_names]
+end_buttons_offline_timers = [[] for _ in tab_names]
+duration_entry_offline_timers = [None for _ in tab_names]
 
+def start():
     # Load the state of the cafe
     load_state()
     for idx, _ in enumerate(ips):
@@ -68,27 +114,11 @@ def start():
     root.after(update_ui_rate, update_ui)
     root.mainloop()
 
-def fetch_ips():
-    try:
-        with open(ips_file_path, "r") as f:
-            # read the IPs from the file line by line
-            lines = f.read().splitlines()
-            # remove whitespaces
-            lines = [line.strip() for line in lines]
-            # remove empty lines
-            lines = [line for line in lines if line]
-            # remove comments
-            lines = [line for line in lines if not line.startswith("#")]
-            return lines
-    except Exception as e:
-        display_error(f"Error reading IPs from file: {e}")
-        return []
-
 # UI update loop on the main thread
 
 def update_ui():
-    # Update the UI based on session status and alive status
     with lock:
+        # Update the UI for the café PCs
         for index, password in enumerate(pc_passwords):
             if any(i == index for i, _ in active_sessions):
                 # If there's an active session, find the remaining timer
@@ -113,13 +143,35 @@ def update_ui():
             else:
                 alive_status = "Dead"
             labels[index].config(text=f"PC-{index+1}\nPassword: {password}\n{session_status}\n{alive_status}")
-    
+
+        # Update the UI for the offline timers
+        for tab_idx, tab in enumerate(roots_offline_timers):
+            for index, title in enumerate(offline_timer_titles[tab_idx]):
+                if any(i == index for i, _ in active_offline_timers[tab_idx]):
+                    # If there's an active offline timer, find the remaining timer
+                    timer = next(tl for i, tl in active_offline_timers[tab_idx] if i == index)
+                    session_status = f"Session Time Left: {int(timer)//60} minutes"
+                    buttons_offline_timers[tab_idx][index].config(text="Extend Session", command=extend_offline_session_button(tab_idx, index))
+                    end_buttons_offline_timers[tab_idx][index].config(state=tk.NORMAL)
+                    if timer > 0:
+                        labels_offline_timers[tab_idx][index].config(bg="lightblue")
+                    else:
+                        labels_offline_timers[tab_idx][index].config(bg="lightcoral")
+                else:
+                    session_status = "No Session"
+                    buttons_offline_timers[tab_idx][index].config(text="Start Session", command=start_offline_session_button(tab_idx, index))
+                    end_buttons_offline_timers[tab_idx][index].config(state=tk.DISABLED)
+                    labels_offline_timers[tab_idx][index].config(bg="lightgray")
+                labels_offline_timers[tab_idx][index].config(text=f"{title}\n{session_status}")
+
     root.after(update_ui_rate, update_ui)  # Update UI every second
 
 def start_ui():
-    global root, labels, buttons, end_buttons, duration_entry
+    global root, labels, buttons, end_buttons, duration_entry, roots_offline_timers, labels_offline_timers, buttons_offline_timers, end_buttons_offline_timers, duration_entry_offline_timers
+    
+    # Create the main UI window and widgets for the café PCs
     root.title("Café PC Management")
-    for idx, ip in enumerate(ips):
+    for idx, _ in enumerate(ips):
         frame = tk.Frame(root, width=200, height=100, borderwidth=2, relief="groove")
         frame.grid(row=idx//2, column=idx%2, padx=10, pady=10)
 
@@ -139,29 +191,53 @@ def start_ui():
     duration_entry.insert(0, "Duration in minutes")
     duration_entry.grid(row=len(ips)//2 + 1, column=0, columnspan=2, padx=10, pady=10)
 
+    # Create the main UI window and widgets for the offline timers
+    for tab_idx, tab in enumerate(roots_offline_timers):
+        tab.title(f"Offline Timers - {tab_names[tab_idx]}")
+        for idx, _ in enumerate(offline_timer_titles[tab_idx]):
+            frame = tk.Frame(tab, width=200, height=100, borderwidth=2, relief="groove")
+            frame.grid(row=idx//2, column=idx%2, padx=10, pady=10)
+
+            label = tk.Label(frame, text=f"{offline_timer_titles[tab_idx][idx]}\nAvailable", justify="left")
+            label.pack(padx=5, pady=5)
+            labels_offline_timers[tab_idx].append(label)
+
+            button = tk.Button(frame, text="Start Session", command=start_offline_session_button(tab_idx, idx))
+            button.pack(padx=5, pady=5)
+            buttons_offline_timers[tab_idx].append(button)
+
+            end_button = tk.Button(frame, text="End Session", command=end_offline_session_button(tab_idx, idx), state=tk.DISABLED)
+            end_button.pack(padx=5, pady=5)
+            end_buttons_offline_timers[tab_idx].append(end_button)
+
+        duration_entry_offline_timers[tab_idx] = tk.Entry(tab)
+        duration_entry_offline_timers[tab_idx].insert(0, "Duration in minutes")
+        duration_entry_offline_timers[tab_idx].grid(row=len(offline_timer_titles[tab_idx])//2 + 1, column=0, columnspan=2, padx=10, pady=10)
+
 def start_session(index, session_duration_minutes):
     if index < 0 or index >= len(ips):
         display_error("Invalid café PC index.")
         return
+    if any(i == index for i, _ in active_sessions):
+        display_error(f"A session is already active on this café PC-{index+1}.")
+        return
     
     cafe_pc_ip = ips[index]
+    
+    # change password
     new_password = generate_password()
+    if not send_command(cafe_pc_ip, PORT, f"change_password {new_password}"):
+        display_error(f"Failed to start session on café PC-{index+1}.")
+        return
     with lock:
-        if any(i == index for i, _ in active_sessions):
-            display_error(f"A session is already active on this café PC-{index+1}.")
-            return
-        
-        # change password
-        if not send_command(cafe_pc_ip, PORT, f"change_password {new_password}"):
-            display_error(f"Failed to start session on café PC-{index+1}.")
-            return
         pc_passwords[index] = new_password
 
-        # set timer
-        session_duration_seconds = int(session_duration_minutes * 60)
-        if not send_command(cafe_pc_ip, PORT, f"set_timer {session_duration_seconds}"):
-            display_error(f"Failed to set timer on café PC-{index+1}.")
-            return
+    # set timer
+    session_duration_seconds = int(session_duration_minutes * 60)
+    if not send_command(cafe_pc_ip, PORT, f"set_timer {session_duration_seconds}"):
+        display_error(f"Failed to set timer on café PC-{index+1}.")
+        return
+    with lock:
         active_sessions.append((index, session_duration_seconds))
 
     print(f"Session started on café PC {index+1} ({cafe_pc_ip}) for {session_duration_minutes} minutes. Password: {new_password}")
@@ -224,6 +300,57 @@ def end_session_button(index):
         end_session(index)
     return end
 
+def start_offline_session(tab_idx, index, session_duration_minutes):
+    if index < 0 or index >= len(offline_timer_titles[tab_idx]):
+        display_error("Invalid timer index.")
+        return
+    
+    timer_title = offline_timer_titles[tab_idx][index]
+    if any(i == index for i, _ in active_offline_timers[tab_idx]):
+        display_error(f"Timer {timer_title} is already active.")
+        return
+    with lock:
+        active_offline_timers[tab_idx].append((index, session_duration_minutes * 60))
+
+    print(f"Started offline timer {timer_title} for {session_duration_minutes} minutes.")
+    save_state()
+
+def extend_offline_session(tab_idx, index, extra_time_minutes):
+    for i, (timer_index, time_left) in enumerate(active_offline_timers[tab_idx]):
+        if timer_index == index:
+            new_time_left = int(max(0, time_left + extra_time_minutes * 60))
+            with lock:
+                active_offline_timers[tab_idx][i] = (timer_index, new_time_left)
+
+            print(f"Extended offline timer {offline_timer_titles[tab_idx][index]} by {extra_time_minutes} minutes. New time left: {new_time_left//60} minutes")
+            save_state()
+
+def end_offline_session(tab_idx, index):
+    for i, (timer_index, time_left) in enumerate(active_offline_timers[tab_idx]):
+        if timer_index == index:
+            with lock:
+                active_offline_timers[tab_idx].pop(i)
+
+            print(f"Ended offline timer {offline_timer_titles[tab_idx][index]} with time left: {time_left//60} minutes.")
+            save_state()
+
+def start_offline_session_button(tab_idx, index):
+    def start_sh():
+        duration = int(duration_entry_offline_timers[tab_idx].get())
+        start_offline_session(tab_idx, index, duration)
+    return start_sh
+
+def extend_offline_session_button(tab_idx, index):
+    def extend():
+        extra_time = int(duration_entry_offline_timers[tab_idx].get())
+        extend_offline_session(tab_idx, index, extra_time)
+    return extend
+
+def end_offline_session_button(tab_idx, index):
+    def end():
+        end_offline_session(tab_idx, index)
+    return end
+
 # ping thread
 
 def update_ping():
@@ -254,7 +381,7 @@ def ping_pc(ip, index):
 
 def update_sessions():
     while True:
-        # Update the session timers
+        # Update the session timers for café PCs
         for i in range(len(active_sessions)):
             with lock:
                 active_sessions[i] = (active_sessions[i][0], int(max(0, active_sessions[i][1] - update_sessions_rate)))
@@ -263,6 +390,12 @@ def update_sessions():
         for _, (index, time_left) in enumerate(active_sessions):
             if time_left <= 0:
                 threading.Thread(target=time_out_session, args=(index,), daemon=True).start()
+
+        # Update the offline timers
+        for tab_idx, _ in enumerate(offline_timer_titles):
+            for i in range(len(active_offline_timers[tab_idx])):
+                with lock:
+                    active_offline_timers[tab_idx][i] = (active_offline_timers[tab_idx][i][0], int(max(0, active_offline_timers[tab_idx][i][1] - update_sessions_rate)))
         
         time.sleep(update_sessions_rate)
 
@@ -289,6 +422,7 @@ def save_state():
         state["timestamp"] = time.time()
         state["active_sessions"] = active_sessions
         state["pc_passwords"] = pc_passwords
+        state["active_offline_timers"] = active_offline_timers
     try:
         # save state to file
         with open(path, "w") as f:
@@ -314,15 +448,21 @@ def load_state():
             state = json.load(f)
 
             with lock:
-                global active_sessions, pc_passwords
+                global active_sessions, pc_passwords, active_offline_timers
                 active_sessions = state["active_sessions"]
                 pc_passwords = state["pc_passwords"]
+                active_offline_timers = state["active_offline_timers"]
 
-            # update the time left for active sessions based on the timestamp
+            # update the time left for active sessions on café PCs based on the time passed since the state was saved
             time_passed = time.time() - state["timestamp"]
             for i, (index, time_left) in enumerate(active_sessions):
                 active_sessions[i] = (index, int(max(0, time_left - time_passed)))
+            # update the time left for active offline timers based on the time passed since the state was saved
+            for tab_idx, _ in enumerate(offline_timer_titles):
+                for i, (index, time_left) in enumerate(active_offline_timers[tab_idx]):
+                    active_offline_timers[tab_idx][i] = (index, int(max(0, time_left - time_passed)))
 
+            # restore the active sessions on café PCs
             for index, _ in active_sessions:
                 restore_client(index)
 

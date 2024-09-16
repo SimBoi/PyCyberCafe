@@ -1,4 +1,5 @@
 import random
+import re
 import socket
 import subprocess
 import threading
@@ -11,15 +12,6 @@ HOST = '0.0.0.0'  # Listen on all network interfaces
 PORT = 22077
 CLOCK_PORT = 22177
 LOCKER_PORT = 22277
-CAFE_PCS_IPS = [
-    "10.100.102.23",
-    "10.100.102.16",
-    "10.100.102.27",
-    "10.100.102.31",
-    "10.100.102.14",
-    "10.100.102.10",
-    "10.100.102.8",
-]
 
 # text file to redirect the output of the script, None to disable
 output_file = f"C:\\PyCafe\\Logs\\pycafeclient\\pycafeclient_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.log"
@@ -27,7 +19,6 @@ sys.stdout = open(output_file, "w") if output_file is not None else sys.__stdout
 sys.stderr = sys.stdout
 logs_flushing_rate = 30  # in seconds
 
-# Session timer
 session_timer = 0  # in seconds
 session_timer_update_rate = 60  # in seconds
 clock_update_rate = 30  # in seconds
@@ -37,9 +28,20 @@ def lock_pc():
 
 def change_password(new_password):
     try:
-        # get the index of the pc using the ip
-        pc_index = CAFE_PCS_IPS.index(socket.gethostbyname(socket.gethostname()))
-        username = f"PC-{pc_index+1}-Guest"
+        # Get the list of users from the system
+        result = subprocess.run('net user', shell=True, capture_output=True, text=True)
+        # get the user PC-<index>-Guest using regex
+        pattern = re.compile(r"PC-\d+-Guest")
+        username = None
+        for line in result.stdout.splitlines():
+            for user in line.split():
+                match = pattern.match(user)
+                if match:
+                    username = match.group()
+                    break
+        if username is None:
+            print("Error: user not found.")
+            return
 
         # Command to change the user password
         command = f'net user "{username}" {new_password}'
@@ -57,7 +59,12 @@ def change_password(new_password):
         print(f"An error occurred: {e}")
 
 def ping(conn, adress):
-    print('got pinged from :' + str(adress))
+    print('got pinged by ' + str(adress))
+    # ping the locker script
+    if not send_command("localhost", LOCKER_PORT, "ping", receive_response=True, silent_fail=True) == "pong":
+        print("locker dead")
+        conn.sendall("locker dead".encode('utf-8'))
+        return
     conn.sendall("pong".encode('utf-8'))
 
 def restart_pc():
@@ -73,7 +80,7 @@ def send_session_timer(conn):
     conn.sendall(str(session_timer).encode('utf-8'))
 
 def handle_client_connection(args):
-    conn , adress = args[0],args[1]
+    conn, adress = args[0], args[1]
     with conn:
         command = conn.recv(1024).decode('utf-8')
         print(f"Received command: {command}")
@@ -112,7 +119,7 @@ def update_session_timer():
 # client clock thread
 def update_client_clock():
     while True:
-        send_command("localhost", CLOCK_PORT, f"set_timer {session_timer}", True)
+        send_command("localhost", CLOCK_PORT, f"set_timer {session_timer}", silent_fail=True)
         time.sleep(clock_update_rate)
 
 # log flushing thread
@@ -136,7 +143,7 @@ def send_command(ip, port, command, receive_response=False, silent_fail=False):
     for i in range(2):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(3)
+                s.settimeout(2)
                 s.connect((ip, port))
                 s.sendall(command.encode('utf-8'))
                 print(f"Sent command: {command}")

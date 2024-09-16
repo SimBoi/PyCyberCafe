@@ -26,6 +26,10 @@ def lock_pc():
     except Exception as e:
         print(f"Error locking PC: {e}")
 
+def ping(conn, adress):
+    print('got pinged by ' + str(adress))
+    conn.sendall("pong".encode('utf-8'))
+
 def listen_for_connections():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((HOST, LOCKER_PORT))
@@ -33,7 +37,7 @@ def listen_for_connections():
         print(f"Listening on {HOST}:{LOCKER_PORT}")
 
         while True:
-            conn, _ = s.accept()
+            conn, address = s.accept()
             with conn:
                 try:
                     data = conn.recv(1024).decode('utf-8')
@@ -43,6 +47,8 @@ def listen_for_connections():
                         continue
                     if data.startswith("lock"):
                         lock_pc()
+                    elif data.startswith("ping"):
+                        ping(conn, address)
                     else:
                         print("Invalid command received.")
                 except Exception as e:

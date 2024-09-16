@@ -16,7 +16,7 @@ Other features:
 
 # How To Install
 
-## Master PC setup
+## Master PC Setup
 1. download the pycafeserver.py file on your master PC
 2. download the ips.txt file to the same directory as pycafeserver.py
 3. edit the file, add the ips of the target PCs line by line
@@ -24,12 +24,12 @@ Other features:
 5. edit the file, add tab names and add the labels of the offline timers line by line, each tab will create a new UI window with the timers below it
 6. run the pycafeserver.py script from the terminal or create an executable using PyInstaller and run it
 
-## Target PCs setup
+## Target PCs Setup
 on each PC:
 1. create a user called PC-\<number\>-Guest
 2. download pycafeclient.py and edit the logs file path string to a location of your choosing
 3. using Windows Task Scheduler, configure the script or an executable made with PyInstaller to run on startup with the user SYSTEM
-4. download the pycafeclock.py and pycafelocker.py scripts and edit the logs file path string to a location of your choosing
+4. download the pycafeclock.pyw and pycafelocker.pyw scripts and edit the logs file path string to a location of your choosing
 5. using Windows Task Scheduler, configure both scripts or executables made with PyInstaller to run on logon with the user PC-\<number\>-Guest
 
 ## Notes

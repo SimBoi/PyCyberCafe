@@ -1,37 +1,53 @@
-# PyCyberCafe
+<h1 align="center">
+    PyCyberCafe
+    <img src="https://img.shields.io/badge/python-3.12-green?logo=python&logoColor=white&style=for-the-badge">
+</h1>
 
-Session management software for remotely giving timed access to Windows PCs.
-- Start a new session: generates a new password for the selected PC
-- Extend session: Adds/removes time from an active session
-- On session timer end: locks the pc with a randomly generated password
-- End session: restarts the PC and sets a random password, if paired with software like Reboot Restore RX, will restore the PC to the state from before the session start
+PyCyberCafe is a Python-based session management system designed for managing access to multiple Windows PCs in a cyber café environment.
 
-Offline timers are included to create sessions for other devices, basically regular timers with labels
+# Overview
+PyCyberCafe is a session management software designed primarily for cyber cafés but can also be used in other environments where timed access to Windows PCs is needed, such as libraries, schools, or shared office spaces. It allows administrators to remotely start, extend, or end sessions while ensuring system security by locking PCs when sessions end. If paired with software like Reboot Restore RX, the PCs can be restored to their original state after each session. The software also supports offline timers for non-networked devices and includes additional features such as autosaving the café state and logging session activity.
 
-Other features:
-- autosave feature for storing the state of the cafe, will automatically restore the last saved state on script startup
-- constantly pings the client script on the target PCs for detecting attemps to bypass the system, the ping rate can be set in the server script
-- clock script to display the time left for the current session on the target PCs
-- output logs to text files
+# Features
+- Start a new session: generates a new password for the selected PC.
+- Extend session: adds or removes time from an active session.
+- On session timer end: locks the PC with a randomly generated password.
+- End session: restarts the PC and sets a random password. When paired with software like Reboot Restore RX, the PC is restored to its pre-session state.
+- Autosave café state: automatically restores the last saved state upon script startup.
+- Ping detection: regularly pings target PCs to detect attempts to bypass the system (ping rate adjustable in the server script).
+- Clock script: displays the time left for the current session on the target PCs.
+- Offline timers: create and manage timers for non-networked devices with labels.
+- Output logs: logs session activity to text files for easy monitoring.
 
-# How To Install
+# Installation
+
+## Requirements
+- Python 3.12
+- (Optional) PyInstaller for generating executables
+- Administrator access to configure user accounts and scheduled tasks
+- `tkinter` (comes pre-installed with Python, but may need to be installed separately on some systems)
+
+If `tkinter` is not installed, follow the installation guide here:  
+[Installing Tkinter](https://tkdocs.com/tutorial/install.html)
+
 
 ## Master PC Setup
-1. download the pycafeserver.py file on your master PC
-2. download the ips.txt file to the same directory as pycafeserver.py
-3. edit the file, add the ips of the target PCs line by line
-4. download the offline_timers.txt file to the same directory as the pycafeserver.py
-5. edit the file, add tab names and add the labels of the offline timers line by line, each tab will create a new UI window with the timers below it
-6. run the pycafeserver.py script from the terminal or create an executable using PyInstaller and run it
+1. Download the `pycafeserver.py` file on your master PC.
+2. Download the `ips.txt` file to the same directory as `pycafeserver.py`.
+3. Edit `ips.txt` and add the IPs of the target PCs, one per line.
+4. Download `offline_timers.txt` to the same directory as `pycafeserver.py`.
+5. Edit `offline_timers.txt` and add tab names and the labels of the offline timers, one per line. Each tab will create a new UI window with the timers listed below it.
+6. Run the `pycafeserver.py` script from the terminal or create an executable using PyInstaller and run it.
 
 ## Target PCs Setup
-on each PC:
-1. create a user called PC-\<number\>-Guest
-2. download pycafeclient.py and edit the logs file path string to a location of your choosing
-3. using Windows Task Scheduler, configure the script or an executable made with PyInstaller to run on startup with the user SYSTEM
-4. download the pycafeclock.pyw and pycafelocker.pyw scripts and edit the logs file path string to a location of your choosing
-5. using Windows Task Scheduler, configure both scripts or executables made with PyInstaller to run on logon with the user PC-\<number\>-Guest
+For each target PC:
+1. Create a user named `PC-<number>-Guest`.
+2. Download `pycafeclient.py` and edit the log file path string to a location of your choosing.
+3. Using Windows Task Scheduler, configure the script (or an executable created with PyInstaller) to run on startup with the user SYSTEM.
+4. Download the `pycafeclock.pyw` and `pycafelocker.pyw` scripts and edit the log file paths as needed.
+5. Configure both scripts (or their executables) to run on logon using Task Scheduler with the `PC-<number>-Guest` user.
 
 ## Notes
-1. make sure that all the scripts have inbound and outbound traffic allowed in the firewall
-2. additional settings can be edited inside the scripts, such as the pinging rate and the clock update rate...
+- Ensure that all scripts have inbound and outbound traffic allowed in the firewall.
+- Make sure all target PCs are configured with **static IP addresses** to avoid connection issues between the Master PC and the Target PCs.
+- Additional settings, such as ping rate and clock update rate, can be adjusted within the scripts.
